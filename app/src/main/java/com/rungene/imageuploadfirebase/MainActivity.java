@@ -1,39 +1,48 @@
 package com.rungene.imageuploadfirebase;
 
-import android.app.ProgressDialog;
+import android.content.ContentResolver;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
-import android.provider.MediaStore;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v7.app.AppCompatActivity;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.firebase.storage.FileDownloadTask;
+import com.google.firebase.database.DatabaseReference;
+import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.StorageTask;
 import com.google.firebase.storage.UploadTask;
-
-import java.io.File;
-import java.io.IOException;
+import com.squareup.picasso.Picasso;
 
 public class MainActivity extends AppCompatActivity {
-    Button chooseImg, uploadImg,downloadImg;
-    ImageView imgView;
-    int PICK_IMAGE_REQUEST = 111;
-    Uri filePath;
-    ProgressDialog pd;
 
-    //creating reference to firebase storage
-    FirebaseStorage storage = FirebaseStorage.getInstance();
-    StorageReference storageRef = storage.getReferenceFromUrl("gs://imageuploadfirebase-5d152.appspot.com/");    //change the url according to your firebase app
+    private static final int PICK_IMAGE_REQUEST =1;
+
+    private Button mButtonChooseImage,mButtonUpload;
+    private TextView mTextViewsShowUploads;
+    private EditText mEditTextFileName;
+    private ImageView mImageView;
+    private ProgressBar mProgressBar;
+
+    private Uri mImageUri;
+
+    private StorageReference mStorageRef;
+    private DatabaseReference mDatabaseRef;
+
+    private StorageTask mUploadTask;
 
 
     @Override
@@ -41,96 +50,138 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        chooseImg = (Button)findViewById(R.id.chooseImg);
-        uploadImg = (Button)findViewById(R.id.uploadImg);
-        downloadImg = (Button) findViewById(R.id.downloadImg);
-        imgView = (ImageView)findViewById(R.id.imgView);
+        mButtonChooseImage = (Button) findViewById(R.id.button_choose_image);
+        mButtonUpload = (Button) findViewById(R.id.button_upload);
+        mTextViewsShowUploads = (TextView) findViewById(R.id.text_view_show_uploads);
+        mEditTextFileName = (EditText) findViewById(R.id.edit_text_file_name);
+        mImageView = (ImageView) findViewById(R.id.image_view);
+        mProgressBar = (ProgressBar) findViewById(R.id.progress_bar);
+
+        mStorageRef = FirebaseStorage.getInstance().getReference("uploads");
+        mDatabaseRef = FirebaseDatabase.getInstance().getReference("uploads");
 
 
-        pd = new ProgressDialog(this);
-        pd.setMessage("Uploading....");
 
-
-
-        chooseImg.setOnClickListener(new View.OnClickListener() {
+        mButtonChooseImage.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Intent intent = new Intent();
-                intent.setType("image/*");
-                intent.setAction(Intent.ACTION_PICK);
-                startActivityForResult(Intent.createChooser(intent, "Select Image"), PICK_IMAGE_REQUEST);
+                openFileChooser();
+
             }
         });
 
-        uploadImg.setOnClickListener(new View.OnClickListener() {
+        mButtonUpload.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(filePath != null) {
-                    pd.show();
 
-                    StorageReference childRef = storageRef.child("image.jpg");
+                if (mUploadTask !=null && mUploadTask.isInProgress()){
 
-                    //uploading the image
-                    UploadTask uploadTask = childRef.putFile(filePath);
+                    Toast.makeText(MainActivity.this, "Upload in progress", Toast.LENGTH_SHORT).show();
 
-                    uploadTask.addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
-                        @Override
-                        public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
-                            pd.dismiss();
-                            Toast.makeText(MainActivity.this, "Upload successful", Toast.LENGTH_SHORT).show();
-                        }
-                    }).addOnFailureListener(new OnFailureListener() {
-                        @Override
-                        public void onFailure(@NonNull Exception e) {
-                            pd.dismiss();
-                            Toast.makeText(MainActivity.this, "Upload Failed -> " + e, Toast.LENGTH_SHORT).show();
-                        }
-                    });
+
+                }else {
+
+                    uploadFile();
                 }
-                else {
-                    Toast.makeText(MainActivity.this, "Select an image", Toast.LENGTH_SHORT).show();
-                }
+
             }
         });
-        downloadImg.setOnClickListener(new View.OnClickListener() {
+
+        mTextViewsShowUploads.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                try {
-                    final File localFile = File.createTempFile("images", "jpg");
-                    storageRef.getFile(localFile).addOnSuccessListener(new OnSuccessListener<FileDownloadTask.TaskSnapshot>() {
-                        @Override
-                        public void onSuccess(FileDownloadTask.TaskSnapshot taskSnapshot) {
-                            Bitmap bitmap = BitmapFactory.decodeFile(localFile.getAbsolutePath());
-                            imgView.setImageBitmap(bitmap);
-
-                        }
-                    }).addOnFailureListener(new OnFailureListener() {
-                        @Override
-                        public void onFailure(@NonNull Exception exception) {
-                        }
-                    });
-                } catch (IOException e ) {}
 
             }
         });
+
     }
+    private void openFileChooser(){
+
+        Intent intent = new Intent();
+
+        intent.setType("image/*");
+        intent.setAction(Intent.ACTION_GET_CONTENT);
+        startActivityForResult(intent,PICK_IMAGE_REQUEST);
+
+    }
+
+
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == PICK_IMAGE_REQUEST && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            filePath = data.getData();
+        if (requestCode ==PICK_IMAGE_REQUEST && resultCode==RESULT_OK &&
+                data!=null && data.getData()!=null
+                ){
+            mImageUri = data.getData();
 
-            try {
-                //getting image from gallery
-                Bitmap bitmap = MediaStore.Images.Media.getBitmap(getContentResolver(), filePath);
+           // Picasso.with(this).load(mImageUri).into(mImageView);
 
-                //Setting image to ImageView
-                imgView.setImageBitmap(bitmap);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            Picasso.get().load(mImageUri).into(mImageView);
+
+
+           // mImageView.setImageURI(mImageUri);
+
         }
+    }
+
+    private  String getFileExtension(Uri uri){
+        ContentResolver cr = getContentResolver();
+        MimeTypeMap mime = MimeTypeMap.getSingleton();
+
+        return mime.getExtensionFromMimeType(cr.getType(uri));
+
+
+    }
+    private void uploadFile(){
+
+        if (mImageUri!=null){
+
+            StorageReference fileReference = mStorageRef.child(System.currentTimeMillis()
+            +"."+ getFileExtension(mImageUri));
+
+           mUploadTask= fileReference.putFile(mImageUri).
+                    addOnSuccessListener(new OnSuccessListener<UploadTask.TaskSnapshot>() {
+                        @Override
+                        public void onSuccess(UploadTask.TaskSnapshot taskSnapshot) {
+                            Handler handler = new Handler();
+                            handler.postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    mProgressBar.setProgress(0);
+                                }
+                            },500);
+                            Toast.makeText(MainActivity.this, "Uplaod successful", Toast.LENGTH_SHORT).show();
+
+                            Upload upload = new Upload(mEditTextFileName.getText().toString().trim(),
+
+                                    taskSnapshot.getDownloadUrl().toString()
+                                    );
+                            String uploadId = mDatabaseRef.push().getKey();
+                            mDatabaseRef.child(uploadId).setValue(upload);
+
+                        }
+                    }).addOnFailureListener(new OnFailureListener() {
+                @Override
+                public void onFailure(@NonNull Exception e) {
+                    Toast.makeText(MainActivity.this,e.getMessage(), Toast.LENGTH_SHORT).show();
+
+                }
+            }).addOnProgressListener(new OnProgressListener<UploadTask.TaskSnapshot>() {
+                @Override
+                public void onProgress(UploadTask.TaskSnapshot taskSnapshot) {
+
+                    double progress =(100*taskSnapshot.getBytesTransferred()/taskSnapshot.getTotalByteCount());
+                    mProgressBar.setProgress((int) progress);
+                }
+            });
+
+
+        }else {
+            Toast.makeText(this, "No File Selected", Toast.LENGTH_SHORT).show();
+
+        }
+
     }
 }

@@ -25,7 +25,6 @@ import com.google.firebase.storage.OnProgressListener;
 import com.google.firebase.storage.StorageReference;
 import com.google.firebase.storage.StorageTask;
 import com.google.firebase.storage.UploadTask;
-import com.squareup.picasso.Picasso;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -118,10 +117,10 @@ public class MainActivity extends AppCompatActivity {
 
             // Picasso.with(this).load(mImageUri).into(mImageView);
 
-            Picasso.get().load(mImageUri).into(mImageView);
+            //Picasso.get().load(mImageUri).into(mImageView);
 
 
-            // mImageView.setImageURI(mImageUri);
+             mImageView.setImageURI(mImageUri);
 
         }
     }
